@@ -10,6 +10,9 @@
 #include <colorchat>
 #include <core>
 #include <fun>
+#include <cstrike>
+#include <army_ranks_stocks>
+#include <hamsandwich>
 
 #define PLUGIN "ARMYRANKS"
 #define VERSION "1.1"
@@ -40,7 +43,8 @@ new bool:g_bonus_restricted;
 /*
  * these variables posses cvars
 */
-new g_tk_lost_exp, g_tk_lost_exp_amount, g_show_lup_message_all;
+new g_tk_lost_exp, g_tk_lost_exp_amount, g_show_lup_message_all, g_health_per_level, \
+		g_armor_per_level, g_bonus_menu_on;
 
 new const global_ranks[][] = 
 {
@@ -82,6 +86,12 @@ public plugin_init() {
 	g_tk_lost_exp_amount = register_cvar("tk_lost_exp_amount", "3");
 	// show message about player level up to all = 1
 	g_show_lup_message_all	= register_cvar("show_lup_message_all", "1");
+	// how much health player gets for each level
+	g_health_per_level = register_cvar("health_per_level", "3");
+	// how much armor player gets for each level
+	g_armor_per_level = register_cvar("armor_per_level", "5");
+	// show bonus menu on onRoundStart = 1
+	g_bonus_menu_on = register_cvar("bonus_menu_on", "1");
 	/*
 	 * from amxmodx.inc file
 	 * native register_concmd(const cmd[],const function[],flags=-1, const info[]="", FlagManager=-1);
@@ -94,6 +104,12 @@ public plugin_init() {
 	*/
 	register_event("DeathMsg", "onEventDeath", "a", "1>0");
 	register_logevent( "onRoundStart", 2, "1=Round_Start" );
+	
+	/*
+	 * from hamsandwich.inc file
+	 * native HamHook:RegisterHam(Ham:function, const EntityClass[], const Callback[], Post=0);
+	*/
+	RegisterHam(Ham_Spawn, "player", "player_spawned", 1);
 	/*
 	 * from amxmodx.inc file
 	 * native CreateHudSyncObj(num=0, ...);
@@ -431,19 +447,14 @@ bool:mapDisableCheck( file_name[] )
 }
 
 public onRoundStart() {
-	if (g_bonus_restricted) {
-		return PLUGIN_CONTINUE;
-	}
-	for (new id = 1; id <= max_players; id++) {
-		if (is_user_alive(id) && is_user_connected(id)) {
-			/*
-			 * from fun.inc file
-			 * native set_user_armor(index, armor);
-			 * native set_user_health(index, health);
-			*/
-			set_user_health(id, 100 + 2 * (user_data[id][level] - 1));
-			set_user_armor(id, 100 + 2 * (user_data[id][level] - 1));
-			is_level_up[id] = false;
+	if (get_pcvar_num(g_bonus_menu_on) == 1) {
+		for (new id = 1; id <= max_players; id++) {
+			if (is_user_alive(id) && is_user_connected(id)) {
+				if (is_level_up[id] == true) {
+					showBonusMenu(id);
+					is_level_up[id] = false;
+				}
+			}
 		}
 	}
 	return PLUGIN_CONTINUE;
@@ -500,10 +511,10 @@ public onEventDeath() {
 }
 
 public check_level(id) {
-	if (user_data[id][level] <= 0) user_data[id][level] = 1;
+	if (user_data[id][level] < 0) user_data[id][level] = 0;
 	if (user_data[id][exp] < 0) user_data[id][exp] = 0;
 	
-	while (global_levels[user_data[id][level]] <= user_data[id][exp]) {
+	while (user_data[id][level] <= 19 && global_levels[user_data[id][level]] < user_data[id][exp]) {
 		user_data[id][level]++;
 		is_level_up[id] = true;
 	}
@@ -569,7 +580,7 @@ public showRank()
 			 * from amxmodx.inc file
 			 * native set_hudmessage(red=200, green=100, blue=0, Float:x=-1.0, Float:y=0.35, effects=0, Float:fxtime=6.0, Float:holdtime=12.0, Float:fadeintime=0.1, 	Float:fadeouttime=0.2,channel=4);
 			*/
-			set_hudmessage(10, 255, 10, 0.01, 0.35, 0, 1.0, 1.0, _, _, -1)
+			set_hudmessage(127, 127, 127, 0.01, 0.35, 0, 1.0, 1.0, _, _, -1)
 			static buffer[192], len;
 			len = format(buffer, charsmax(buffer), "%L ", LANG_PLAYER, "RANK");
 			len += format(buffer[len], charsmax(buffer) - len, "%L", LANG_PLAYER, global_ranks[user_data[id][level]]);
@@ -587,6 +598,90 @@ public showRank()
 		}
 	}
 	return PLUGIN_CONTINUE
+}
+
+public player_spawned(client_id) {
+	if (g_bonus_restricted) {
+		return HAM_IGNORED;
+	}
+	if (is_user_alive(client_id) && is_user_connected(client_id)) {
+		new value;
+		/*
+		 * from army_ranks_stock.inc file
+		 * stock army_ranks_calculate_value(const base_value, const level, const increase_per_level)
+		*/
+		value = army_ranks_calculate_value(100, user_data[client_id][level], get_pcvar_num(g_health_per_level));
+		/*
+		 * from fun.inc file
+		 * native set_user_health(index, health);
+		*/
+		set_user_health(client_id, value);
+		/*
+		 * from cstrike.inc file
+		 * native cs_set_user_armor(index, armorvalue, CsArmorType:armortype);
+		 * enum CsArmorType {
+		 *   CS_ARMOR_NONE = 0, // no armor
+		 *   CS_ARMOR_KEVLAR = 1, // armor
+		 *   CS_ARMOR_VESTHELM = 2 // armor and helmet
+		 * };
+		*/
+		value = army_ranks_calculate_value(100, user_data[client_id][level], get_pcvar_num(g_armor_per_level));
+		cs_set_user_armor(client_id, value, value >= 100 ? CS_ARMOR_VESTHELM : CS_ARMOR_KEVLAR);
+	}
+	return HAM_IGNORED;
+}
+
+
+public showBonusMenu(client_id) {
+
+}
+
+/*
+* 	Army ranks by sdemian
+*	Natives
+*/
+public plugin_natives()
+{
+	register_native("get_user_exp", "native_get_user_exp", 1);
+	register_native("get_user_lvl", "native_get_user_lvl", 1);
+	register_native("set_user_exp", "native_set_user_exp", 1);
+	register_native("set_user_lvl", "native_set_user_lvl", 1);
+	register_native("get_user_rankname", "native_get_user_rankname", 0);
+	return PLUGIN_CONTINUE
+}
+
+public native_get_user_exp(id)
+{
+	return user_data[id][exp];
+}
+
+public native_get_user_lvl(id)
+{
+	return user_data[id][level];
+}
+
+public native_set_user_exp(id, num)
+{
+	user_data[id][exp] = num;
+}
+
+public native_set_user_lvl(id, num)
+{
+	user_data[id][level] = num;
+}
+
+public native_get_user_rankname()
+{
+	new id = get_param(1);
+	static rank_name[64];
+	format(rank_name, charsmax(rank_name), "%L", LANG_PLAYER, global_ranks[user_data[id][level]]);
+	/*
+	 * from amxmodx.inc file
+	 * native set_string(param, dest[], maxlen);
+	*/
+	new len = get_param(3);
+	set_string(2, rank_name, len);
+	return 1;
 }
 
 /*

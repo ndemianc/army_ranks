@@ -1,0 +1,1 @@
+native get_user_rankname(id);
