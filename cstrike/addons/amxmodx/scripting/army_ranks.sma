@@ -92,6 +92,10 @@ public plugin_init() {
 	g_armor_per_level = register_cvar("armor_per_level", "5");
 	// show bonus menu on onRoundStart = 1
 	g_bonus_menu_on = register_cvar("bonus_menu_on", "1");
+	// this id is needed by colorchat.inc file
+	TeamInfo = get_user_msgid("TeamInfo");
+	// this id is needed by colorchat.inc file
+	SayText = get_user_msgid("SayText");
 	/*
 	 * from amxmodx.inc file
 	 * native register_concmd(const cmd[],const function[],flags=-1, const info[]="", FlagManager=-1);
